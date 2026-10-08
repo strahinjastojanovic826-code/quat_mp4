@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["Strale <strahinjastojanovic826@gmail.com>"]
 description = "A Rust library for packing binary bits into 2-bit quaternary digits (quats) for MP4 processing."
 readme = "README.md"
+repository = "https://github.com//Strale/novi_projekat"
 license = "AGPL-3.0-or-later"
 keywords = ["mp4", "quaternary", "bit-packing", "codec", "quits"]
 categories = ["encoding", "data-structures"]
