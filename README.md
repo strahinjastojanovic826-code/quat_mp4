@@ -6,10 +6,11 @@
 
 ## Features
 
-- **2-bit Packing**: Maps binary bit pairs (`00`, `01`, `10`, `11`) directly to quaternary digits (`Q0`, `Q1`, `Q2`, `Q3`).
-- **Bit-packed Buffer**: Stores 4 quats per byte in memory using standard bit-shifts and masking.
+- **2-bit Packing**: Maps binary bit pairs (`00`, `01`, `10`, `11`) directly to quaternary values (`0`, `1`, `2`, `3`).
+- **Bit-packed Buffer**: Stores 4 quats per byte in memory using standard bit-shifts and masks.
 - **Modular Design**: Separated into dedicated modules for digits, buffers, and iterators.
-- **Zero-Dependency**: Pure, lightweight Rust code.
+- **Serde Integration**: Native support for serialization and deserialization of packed buffers.
+- **Robust Error Handling**: Safe error management using custom `QuatError` variants instead of panics.
 
 ---
 
@@ -30,7 +31,7 @@ Add `quat_mp4` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-quat_mp4 = "0.1.0"
+quat_mp4 = "0.2.0"
 ```
 
 ### Basic Example
