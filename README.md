@@ -6,11 +6,13 @@
 
 ## Features
 
-- **2-bit Packing**: Maps binary bit pairs (`00`, `01`, `10`, `11`) directly to quaternary values (`0`, `1`, `2`, `3`).
-- **Bit-packed Buffer**: Stores 4 quats per byte in memory using standard bit-shifts and masks.
-- **Modular Design**: Separated into dedicated modules for digits, buffers, and iterators.
-- **Serde Integration**: Native support for serialization and deserialization of packed buffers.
-- **Robust Error Handling**: Safe error management using custom `QuatError` variants instead of panics.
+- **2-bit Packing**: Maps binary bit pairs (`00`, `01`, `10`, `11`) directly to quaternary digits[cite: 8].
+- **Bit-packed Buffer**: Stores 4 quats per byte in memory using standard byte vectors with minimal overhead[cite: 8].
+- **`no_std` Compatible**: Fully compatible with `no_std` environments utilizing the `alloc` crate.
+- **100% Safe Rust**: Strictly forbids unsafe code (`#[deny(unsafe_code)]`) for maximum reliability and safety.
+- **Serde Integration**: Native support for serialization and deserialization with strict canonical bit validation[cite: 8].
+- **Robust Error Handling**: Safe error management using custom `QuatError`[cite: 8].
+- **Ergonomic APIs**: Supports string parsing (`FromStr`), indexing, and both borrowing and owning iterators.
 
 ---
 
@@ -31,37 +33,32 @@ Add `quat_mp4` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-quat_mp4 = "0.2.0"
+quat_mp4 = "1.0.0"
 ```
 
 ### Basic Example
 
 ```rust
 use quat_mp4::{QuatBuffer, QuatDigit};
+use core::str::FromStr;
 
-fn main() {
-    let mut buffer = QuatBuffer::new();
-
-    // Push quaternary digits (2 bits each)
-    buffer.push(QuatDigit::Q0); // 0b00
-    buffer.push(QuatDigit::Q1); // 0b01
-    buffer.push(QuatDigit::Q2); // 0b10
-    buffer.push(QuatDigit::Q3); // 0b11
+fn main() -> Result<(), quat_mp4::QuatError> {
+    // Create a buffer directly from a string of quaternary digits
+    let buffer = QuatBuffer::from_str("0123")?;
 
     // Total stored digits
     assert_eq!(buffer.len(), 4);
-
-    // Get packed raw bytes (0b00_01_10_11 == 0x1B)
-    assert_eq!(buffer.as_raw_bytes(), &[0x1B]);
 
     // Access individual digits by index
     assert_eq!(buffer.get(0), Some(QuatDigit::Q0));
     assert_eq!(buffer.get(3), Some(QuatDigit::Q3));
 
-    // Iterate over digits
-    for digit in buffer.iter() {
-        println!("Quat digit: {:?}", digit);
+    // Iterate over digits efficiently
+    for digit in &buffer {
+        println!("Quat digit: {digit}");
     }
+
+    Ok(())
 }
 ```
 
