@@ -26,7 +26,7 @@ By default, this software is licensed under the terms of the **GNU Affero Genera
 ### 2. Commercial License
 If you wish to use `quat_mp4` in proprietary, closed-source, or commercial products without the copyleft obligations of the AGPL, a **Commercial License** is required. 
 
-To obtain a commercial license, please contact us at [your-email@domain.com].
+To obtain a commercial license, please contact us at [strahinjastojanovic826@gmail.com].
 
 ---
 
