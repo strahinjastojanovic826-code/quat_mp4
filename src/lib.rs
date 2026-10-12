@@ -15,17 +15,21 @@ extern crate alloc;
 pub mod error;
 pub mod digit;
 pub mod buffer;
+/// FFI interface layer for foreign languages.
+pub mod ffi;
 
 pub use digit::QuatDigit;
 pub use error::QuatError;
 pub use buffer::QuatBuffer;
 
 #[cfg(test)]
+#[allow(unsafe_code)]
 mod tests {
     use super::*;
     use alloc::vec::Vec;
     use alloc::string::ToString;
     use core::str::FromStr;
+    use super::ffi::*;
 
     // ==========================================
     // 1. DIGIT & ERROR TESTS
@@ -204,5 +208,84 @@ mod tests {
             result.is_err(),
             "Deserialization must fail if unused bits in the last byte are non-zero!"
         );
+    }
+    #[test]
+    fn test_ffi_lifecycle_and_operations() {
+        unsafe {
+            // Test buffer creation
+            let buffer = ffi::quat_buffer_new();
+            assert!(!buffer.is_null());
+            assert_eq!(ffi::quat_buffer_len(buffer), 0);
+
+            // Test pushing valid quaternary digits (0 to 2)
+            assert_eq!(ffi::quat_buffer_push(buffer, 0), ffi::QuatResult::Ok as i32);
+            assert_eq!(ffi::quat_buffer_push(buffer, 1), ffi::QuatResult::Ok as i32);
+            assert_eq!(ffi::quat_buffer_push(buffer, 2), ffi::QuatResult::Ok as i32);
+            assert_eq!(ffi::quat_buffer_len(buffer), 3);
+
+            // Test pushing invalid bits (3 is invalid in current digit.rs implementation)
+            assert_eq!(ffi::quat_buffer_push(buffer, 3), ffi::QuatResult::InvalidBits as i32);
+
+            // Test retrieving digits via get
+            let mut digit: u8 = 0;
+            assert_eq!(ffi::quat_buffer_get(buffer, 0, &mut digit), ffi::QuatResult::Ok as i32);
+            assert_eq!(digit, 0);
+
+            assert_eq!(ffi::quat_buffer_get(buffer, 2, &mut digit), ffi::QuatResult::Ok as i32);
+            assert_eq!(digit, 2);
+
+            // Test out of bounds access
+            assert_eq!(ffi::quat_buffer_get(buffer, 10, &mut digit), ffi::QuatResult::OutOfBounds as i32);
+
+            // Test pop operation
+            assert_eq!(ffi::quat_buffer_pop(buffer, &mut digit), ffi::QuatResult::Ok as i32);
+            assert_eq!(digit, 2);
+            assert_eq!(ffi::quat_buffer_len(buffer), 2);
+
+            // Test capacity and raw bytes zero-copy access
+            let cap = ffi::quat_buffer_capacity(buffer);
+            assert!(cap >= 2);
+
+            let mut raw_ptr = core::ptr::null();
+            let mut raw_len = 0;
+            assert_eq!(
+                ffi::quat_buffer_as_raw_bytes(buffer, &mut raw_ptr, &mut raw_len),
+                ffi::QuatResult::Ok as i32
+            );
+            assert!(!raw_ptr.is_null());
+            assert!(raw_len > 0);
+
+            // Test freeing memory
+            ffi::quat_buffer_free(buffer);
+            ffi::quat_buffer_free(core::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn test_ffi_with_capacity() {
+        unsafe {
+            let buffer = quat_buffer_with_capacity(16);
+            assert!(!buffer.is_null());
+            assert!(quat_buffer_capacity(buffer) >= 16);
+            quat_buffer_free(buffer);
+        }
+    }
+
+    #[test]
+    fn test_ffi_null_pointer_handling() {
+        unsafe {
+            // Ensure functions safely handle null pointers without crashing
+            assert_eq!(quat_buffer_push(core::ptr::null_mut(), 1), QuatResult::NullPointer as i32);
+            assert_eq!(quat_buffer_len(core::ptr::null()), 0);
+            assert_eq!(quat_buffer_capacity(core::ptr::null()), 0);
+            
+            let mut digit = 0;
+            assert_eq!(quat_buffer_get(core::ptr::null(), 0, &mut digit), QuatResult::NullPointer as i32);
+            assert_eq!(quat_buffer_pop(core::ptr::null_mut(), &mut digit), QuatResult::NullPointer as i32);
+            
+            let mut ptr = core::ptr::null();
+            let mut len = 0;
+            assert_eq!(quat_buffer_as_raw_bytes(core::ptr::null(), &mut ptr, &mut len), QuatResult::NullPointer as i32);
+        }
     }
 }
