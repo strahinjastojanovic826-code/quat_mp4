@@ -5,7 +5,6 @@
 use core::fmt;
 use core::str::FromStr;
 use core::ops::Index;
-use alloc::vec::Vec;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::digit::QuatDigit;
 use crate::error::QuatError;

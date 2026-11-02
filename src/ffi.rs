@@ -5,9 +5,6 @@
 
 #![allow(unsafe_code)]
 
-extern crate alloc;
-
-use alloc::boxed::Box;
 use core::ffi::{c_int, c_uchar};
 
 use crate::buffer::QuatBuffer;

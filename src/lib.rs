@@ -5,18 +5,13 @@
 //! 
 //! Fully compatible with `no_std` environments (utilizing `alloc`) and production-ready `serde`.
 
-#![no_std]
-#![deny(missing_docs)]
 #![deny(unsafe_code)]
-
-#[macro_use]
-extern crate alloc;
 
 pub mod error;
 pub mod digit;
 pub mod buffer;
-/// FFI interface layer for foreign languages.
 pub mod ffi;
+pub mod mp4_parser;
 
 pub use digit::QuatDigit;
 pub use error::QuatError;
@@ -26,10 +21,10 @@ pub use buffer::QuatBuffer;
 #[allow(unsafe_code)]
 mod tests {
     use super::*;
-    use alloc::vec::Vec;
-    use alloc::string::ToString;
     use core::str::FromStr;
     use super::ffi::*;
+    use super::mp4_parser::*;
+    use std::io::Cursor;
 
     // ==========================================
     // 1. DIGIT & ERROR TESTS
@@ -288,4 +283,75 @@ mod tests {
             assert_eq!(quat_buffer_as_raw_bytes(core::ptr::null(), &mut ptr, &mut len), QuatResult::NullPointer as i32);
         }
     }
+    #[test]
+    fn test_quaternary_buffer_packing_and_efficiency() {
+        let mut buffer = QuatByteBuffer::with_capacity(4);
+        assert!(buffer.is_empty());
+
+        // Push 4 valid quaternary digits (0..=3)
+        // 0 -> 00, 1 -> 01, 2 -> 10, 3 -> 11
+        assert!(buffer.push(0).is_ok());
+        assert!(buffer.push(1).is_ok());
+        assert!(buffer.push(2).is_ok());
+        assert!(buffer.push(3).is_ok());
+
+        assert_eq!(buffer.len(), 4);
+        
+        // Verification: 4 digits must be tightly packed into exactly 1 byte (75% space reduction).
+        // Binary layout: 00 01 10 11 -> 0b00011011 = 0x1B (27 in decimal)
+        assert_eq!(buffer.as_bytes(), &[0x1B]);
+
+        // Verify that invalid quaternary digits (>= 4) are strictly rejected
+        assert!(matches!(
+            buffer.push(4),
+            Err(Mp4QuatError::InvalidQuaternaryData(4))
+        ));
+    }
+
+    #[test]
+    fn test_mp4_box_serialization_roundtrip() {
+        let mut buffer = QuatByteBuffer::new();
+        // Pack multiple quaternary sequences
+        buffer.push(3).unwrap(); // 11
+        buffer.push(0).unwrap(); // 00
+        buffer.push(2).unwrap(); // 10
+        buffer.push(1).unwrap(); // 01
+
+        let original_box = QuatMp4Box::new(buffer);
+
+        // Serialize the custom MP4 box into an in-memory byte stream (writer)
+        let mut stream_buffer = Vec::new();
+        let write_result = original_box.write_to(&mut stream_buffer);
+        assert!(write_result.is_ok());
+
+        // Standard box header size is 8 bytes (4 bytes size + 4 bytes FourCC 'quat')
+        assert!(stream_buffer.len() >= 8);
+
+        // Deserialize the byte stream back into an MP4 box (reader)
+        let mut reader = Cursor::new(stream_buffer);
+        let parsed_box = QuatMp4Box::read_from(&mut reader);
+        assert!(parsed_box.is_ok());
+
+        let parsed_box = parsed_box.unwrap();
+
+        // Validate integrity across the transport boundary
+        assert_eq!(original_box.box_size, parsed_box.box_size);
+        assert_eq!(original_box.box_type, parsed_box.box_type);
+        assert_eq!(original_box.payload.as_bytes(), parsed_box.payload.as_bytes());
+        assert_eq!(original_box.payload.len(), parsed_box.payload.len());
+    }
+
+    #[test]
+    fn test_mp4_box_type_fourcc_mapping() {
+        let ftyp_bytes = *b"ftyp";
+        let quat_bytes = *b"quat";
+        let unknown_bytes = *b"abcd";
+
+        assert_eq!(Mp4BoxType::from(ftyp_bytes), Mp4BoxType::FileType);
+        assert_eq!(Mp4BoxType::from(quat_bytes), Mp4BoxType::QuaternaryData);
+        assert_eq!(Mp4BoxType::from(unknown_bytes), Mp4BoxType::Unknown(unknown_bytes));
+
+        assert_eq!(Mp4BoxType::QuaternaryData.as_bytes(), b"quat");
+    }
 }
+

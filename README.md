@@ -6,13 +6,13 @@
 
 ## Features
 
-- **2-bit Packing**: Maps binary bit pairs (`00`, `01`, `10`, `11`) directly to quaternary digits[cite: 8].
-- **Bit-packed Buffer**: Stores 4 quats per byte in memory using standard byte vectors with minimal overhead[cite: 8].
-- **`no_std` Compatible**: Fully compatible with `no_std` environments utilizing the `alloc` crate.
-- **100% Safe Rust**: Strictly forbids unsafe code (`#[deny(unsafe_code)]`) for maximum reliability and safety.
-- **Serde Integration**: Native support for serialization and deserialization with strict canonical bit validation[cite: 8].
-- **Robust Error Handling**: Safe error management using custom `QuatError`[cite: 8].
-- **Ergonomic APIs**: Supports string parsing (`FromStr`), indexing, and both borrowing and owning iterators.
+- **2-bit Packing**: Maps binary bit pairs (`00`, `01`, `10`, `11`) to quaternary digits (`quat`), achieving an efficient 75% memory space reduction.
+- **MP4 Container Integration**: Native support for ISO/IEC 14496-12 (ISOBMFF) file structures using custom `quat` boxes for seamless multimedia and data embedding.
+- **FFI & C Interoperability**: Stable C-compatible foreign function interface (`pub extern "C"`) enabling integration with C, C++, and C#.
+- **Bit-packed Buffer**: Stores 4 quats per byte in memory using optimized byte vectors with strict boundary checks.
+- **Serde Integration**: Native support for serialization and deserialization with strict canonical form validation.
+- **Robust Error Handling**: Safe error management using custom `QuatError` and `Mp4QuatError` types.
+- **Ergonomic APIs**: Supports string parsing (`FromStr`), indexing, iterators, and both borrowing and owning data flows.
 
 ---
 
@@ -26,7 +26,7 @@ By default, this software is licensed under the terms of the **GNU Affero Genera
 ### 2. Commercial License
 If you wish to use `quat_mp4` in proprietary, closed-source, or commercial products without the copyleft obligations of the AGPL, a **Commercial License** is required. 
 
-To obtain a commercial license, please contact us at [your-email@domain.com].
+To obtain a commercial license, please contact us at [strahinjastojanovic826@gmail.com].
 
 ---
 
@@ -47,7 +47,7 @@ Add `quat_mp4` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-quat_mp4 = "1.1.0"
+quat_mp4 = "1.2.0"
 ```
 
 ### Basic Example
@@ -75,6 +75,39 @@ fn main() -> Result<(), quat_mp4::QuatError> {
     Ok(())
 }
 ```
+
+---
+
+### MP4 Container Integration Example
+
+```rust
+use quat_mp4::{QuatByteBuffer, QuatMp4Box};
+use std::io::Cursor;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Create a quaternary buffer and pack digits (achieving 75% space reduction)
+    let mut buffer = QuatByteBuffer::new();
+    buffer.push(3)?; // Binary: 11
+    buffer.push(0)?; // Binary: 00
+    buffer.push(2)?; // Binary: 10
+    buffer.push(1)?; // Binary: 01
+
+    // 2. Wrap the compressed quaternary data into a custom ISO/IEC 14496-12 (MP4) 'quat' box
+    let mp4_box = QuatMp4Box::new(buffer);
+
+    // 3. Serialize the box directly into an MP4 file stream or writer
+    let mut file_stream = Vec::new();
+    mp4_box.write_to(&mut file_stream)?;
+    println!("Successfully wrote MP4 'quat' box, total size: {} bytes", file_stream.len());
+
+    // 4. Read and parse the MP4 box back from the stream
+    let mut reader = Cursor::new(file_stream);
+    let parsed_box = QuatMp4Box::read_from(&mut reader)?;
+    
+    println!("Parsed box type successfully with payload length: {} digits", parsed_box.payload.len());
+
+    Ok(())
+}
 
 ---
 
