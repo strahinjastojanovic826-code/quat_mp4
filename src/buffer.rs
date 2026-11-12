@@ -121,6 +121,42 @@ impl QuatBuffer {
         QuatDigit::from_bits(bits)
     }
 
+    /// Highly optimized bulk push for a slice of QuatDigits.
+    /// Processes data in chunks to leverage auto-vectorization (SIMD).
+    pub fn push_slice(&mut self, digits: &[QuatDigit]) -> Result<(), QuatError> {
+        if digits.is_empty() {
+            return Ok(());
+        }
+
+        // Reserve capacity beforehand to avoid reallocations
+        let additional_len = self.len + digits.len();
+        self.reserve(additional_len - self.len);
+
+        // Process chunks of 4 digits (1 byte) for maximum throughput
+        let mut chunks = digits.chunks_exact(4);
+        for chunk in &mut chunks {
+            let b0 = chunk[0].to_bits() & 0b11;
+            let b1 = chunk[1].to_bits() & 0b11;
+            let b2 = chunk[2].to_bits() & 0b11;
+            let b3 = chunk[3].to_bits() & 0b11;
+
+            let packed_byte = (b0 << 6) | (b1 << 4) | (b2 << 2) | b3;
+            self.data.push(packed_byte);
+        }
+
+        // Handle remaining digits (less than 4)
+        let remainder = chunks.remainder();
+        if !remainder.is_empty() {
+            for digit in remainder {
+                // Re-use existing single push logic for the tail
+                self.push(*digit);
+            }
+        }
+
+        self.len = additional_len;
+        Ok(())
+    }
+
     /// Returns the digit at the given index, or `None` if out of bounds.
     #[must_use]
     pub fn get(&self, index: usize) -> Option<QuatDigit> {

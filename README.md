@@ -13,8 +13,36 @@
 - **Serde Integration**: Native support for serialization and deserialization with strict canonical form validation.
 - **Robust Error Handling**: Safe error management using custom `QuatError` and `Mp4QuatError` types.
 - **Ergonomic APIs**: Supports string parsing (`FromStr`), indexing, iterators, and both borrowing and owning data flows.
+- **FFmpeg Integration**: Native custom demuxer and probe support for parsing and extracting quaternary payloads within FFmpeg filter pipelines.
+- **SIMD & Auto-Vectorization Optimization**: High-performance bulk operations (`push_slice`) utilizing exact chunks for maximum data throughput and hardware auto-vectorization.
+- **Zero-Cost Abstractions**: Strict validation and type-safe wrappers (`QuatDigit`, `QuatBuffer`) with zero runtime overhead over raw binary data.
+- **Memory-Optimized Iteration**: Comprehensive collection iterators (`IntoIter`, borrowing iterators) supporting `ExactSizeIterator` for efficient traversal.
+- **FFI Memory Safety**: Robust native interoperability with explicit null-pointer checks, safe memory allocation/deallocation (`Box::into_raw` / `Box::from_raw`), and panic prevention.
 
 ---
+
+## Benchmark
+
+| Test Name | Iterations / Calls | Total Duration | Status |
+| :--- | :--- | :--- | :--- |
+| `test_benchmark_ffmpeg_probe` | 10,000 calls[cite: 16] | 329.9 µs[cite: 16] | Passed[cite: 16] |
+| `test_benchmark_bulk_push` | 40,000 ops[cite: 16] | 839.8 µs[cite: 16] | Passed[cite: 16] |
+| `test_digit_creation_and_bits_bench` | 100,000 iterations[cite: 16] | 5.8554 ms[cite: 16] | Passed[cite: 16] |
+| `test_ffmpeg_bridge_integration_bench` | 100,000 iterations[cite: 16] | 7.2033 ms[cite: 16] | Passed[cite: 16] |
+| `test_mp4_box_type_fourcc_mapping_bench` | 100,000 iterations[cite: 16] | 6.7638 ms[cite: 16] | Passed[cite: 16] |
+| `test_char_try_from_bench` | 100,000 iterations[cite: 16] | 8.9689 ms[cite: 16] | Passed[cite: 16] |
+| `test_buffer_clear_and_reserve_bench` | 50,000 iterations[cite: 16] | 9.1479 ms[cite: 16] | Passed[cite: 16] |
+| `test_from_str_and_display_bench` | 50,000 iterations[cite: 16] | 10.0579 ms[cite: 16] | Passed[cite: 16] |
+| `test_push_slice_and_bulk_efficiency_bench` | 50,000 iterations[cite: 18] | 10.0877 ms[cite: 18] | Passed[cite: 18] |
+| `test_quaternary_buffer_packing_and_efficiency_bench` | 50,000 iterations[cite: 18] | 12.4436 ms[cite: 18] | Passed[cite: 18] |
+| `test_indexing_bench` | 50,000 iterations[cite: 16] | 12.5138 ms[cite: 16] | Passed[cite: 16] |
+| `test_buffer_new_and_capacity_bench` | 100,000 iterations[cite: 16] | 17.212 ms[cite: 16] | Passed[cite: 16] |
+| `test_buffer_push_pop_lifecycle_bench` | 50,000 iterations[cite: 18] | 18.8606 ms[cite: 18] | Passed[cite: 18] |
+| `test_conversions_and_as_ref_bench` | 50,000 iterations[cite: 18] | 20.12 ms[cite: 18] | Passed[cite: 18] |
+| `test_mp4_box_serialization_roundtrip_bench` | 20,000 iterations[cite: 18] | 22.0588 ms[cite: 18] | Passed[cite: 18] |
+| `test_iterators_bench` | 50,000 iterations[cite: 18] | 26.2384 ms[cite: 18] | Passed[cite: 18] |
+| `test_error_display_bench` | 100,000 iterations[cite: 18] | 130.4282 ms[cite: 18] | Passed[cite: 18] |
+| `test_benchmark_single_push` | 40,000 ops[cite: 18] | 4.3675 s[cite: 18] | Passed[cite: 18] |
 
 ## License
 
@@ -47,7 +75,7 @@ Add `quat_mp4` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-quat_mp4 = "1.2.0"
+quat_mp4 = "1.3.0"
 ```
 
 ### Basic Example
@@ -72,6 +100,25 @@ fn main() -> Result<(), quat_mp4::QuatError> {
         println!("Quat digit: {digit}");
     }
 
+    Ok(())
+}
+```
+
+---
+
+### Bulk Operations Example
+
+```rust
+use quat_mp4::{QuatByteBuffer, QuatDigit};
+
+fn main() -> Result<(), quat_mp4::QuatError> {
+    let mut buffer = QuatByteBuffer::new();
+    
+    // Efficiently push a slice of quaternary digits at once
+    let digits = &[QuatDigit::Q3, QuatDigit::Q0, QuatDigit::Q2, QuatDigit::Q1];
+    buffer.push_slice(digits)?;
+
+    println!("Total digits stored: {}", buffer.len());
     Ok(())
 }
 ```
