@@ -174,6 +174,279 @@ impl QuatBuffer {
     pub fn as_raw_bytes(&self) -> &[u8] {
         &self.data
     }
+
+    /// Returns a human-readable diagnostic summary of buffer state and quaternary contents.
+    pub fn diagnostic_summary(&self) -> String {
+        let digits: String = self
+            .iter()
+            .map(|d| char::from(b'0' + d.to_bits()))
+            .collect();
+        format!(
+            "QuatBuffer {{ len: {}, packed_bytes: {}, capacity_digits: {}, digits: [{}] }}",
+            self.len,
+            self.data.len(),
+            self.capacity(),
+            digits
+        )
+    }
+
+    /// Applies quaternary NOT (`3 - digit` / `^ 0b11`) to each digit in the buffer.
+    pub fn quat_not(&mut self) {
+        let mut out = Self::with_capacity(self.len);
+        for d in self.iter() {
+            if let Ok(inv) = QuatDigit::from_bits(d.to_bits() ^ 0b11) {
+                out.push(inv);
+            }
+        }
+        *self = out;
+    }
+
+    /// Computes quaternary XOR (`a ^ b` per digit) up to the shorter buffer length.
+    pub fn quat_xor(&self, other: &Self) -> Self {
+        let min_len = self.len.min(other.len);
+        let mut out = Self::with_capacity(min_len);
+        for i in 0..min_len {
+            let shift = ((3 - (i % 4)) * 2) as u8;
+            let a_bits = (self.data[i / 4] >> shift) & 0b11;
+            let b_bits = (other.data[i / 4] >> shift) & 0b11;
+            if let Ok(d) = QuatDigit::from_bits(a_bits ^ b_bits) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    /// Computes quaternary AND (`a & b` per digit) up to the shorter buffer length.
+    pub fn quat_and(&self, other: &Self) -> Self {
+        let min_len = self.len.min(other.len);
+        let mut out = Self::with_capacity(min_len);
+        for i in 0..min_len {
+            let shift = ((3 - (i % 4)) * 2) as u8;
+            let a_bits = (self.data[i / 4] >> shift) & 0b11;
+            let b_bits = (other.data[i / 4] >> shift) & 0b11;
+            if let Ok(d) = QuatDigit::from_bits(a_bits & b_bits) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    /// Computes quaternary OR (`a | b` per digit) up to the shorter buffer length.
+    pub fn quat_or(&self, other: &Self) -> Self {
+        let min_len = self.len.min(other.len);
+        let mut out = Self::with_capacity(min_len);
+        for i in 0..min_len {
+            let shift = ((3 - (i % 4)) * 2) as u8;
+            let a_bits = (self.data[i / 4] >> shift) & 0b11;
+            let b_bits = (other.data[i / 4] >> shift) & 0b11;
+            if let Ok(d) = QuatDigit::from_bits(a_bits | b_bits) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    /// Shifts quaternary digits left by `n` positions, filling vacated right positions with `Q0`.
+    pub fn quat_shl(&self, n: usize) -> Self {
+        if n >= self.len {
+            let mut out = Self::with_capacity(self.len);
+            for _ in 0..self.len {
+                out.push(QuatDigit::Q0);
+            }
+            return out;
+        }
+        let mut out = Self::with_capacity(self.len);
+        for i in n..self.len {
+            if let Ok(d) = self.try_get(i) {
+                out.push(d);
+            }
+        }
+        for _ in 0..n {
+            out.push(QuatDigit::Q0);
+        }
+        out
+    }
+
+    /// Shifts quaternary digits right by `n` positions, filling vacated left positions with `Q0`.
+    pub fn quat_shr(&self, n: usize) -> Self {
+        if n >= self.len {
+            let mut out = Self::with_capacity(self.len);
+            for _ in 0..self.len {
+                out.push(QuatDigit::Q0);
+            }
+            return out;
+        }
+        let mut out = Self::with_capacity(self.len);
+        for _ in 0..n {
+            out.push(QuatDigit::Q0);
+        }
+        for i in 0..(self.len - n) {
+            if let Ok(d) = self.try_get(i) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    /// Rotates quaternary digits left by `n` positions modulo `self.len`.
+    pub fn quat_rotl(&self, n: usize) -> Self {
+        if self.len == 0 {
+            return Self::new();
+        }
+        let shift = n % self.len;
+        let mut out = Self::with_capacity(self.len);
+        for i in shift..self.len {
+            if let Ok(d) = self.try_get(i) {
+                out.push(d);
+            }
+        }
+        for i in 0..shift {
+            if let Ok(d) = self.try_get(i) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    /// Rotates quaternary digits right by `n` positions modulo `self.len`.
+    pub fn quat_rotr(&self, n: usize) -> Self {
+        if self.len == 0 {
+            return Self::new();
+        }
+        let shift = n % self.len;
+        self.quat_rotl(self.len - shift)
+    }
+
+    /// Truncates the buffer to at most `new_len` quaternary digits.
+    pub fn truncate(&mut self, new_len: usize) {
+        if new_len >= self.len {
+            return;
+        }
+        let mut trimmed = Self::with_capacity(new_len);
+        for i in 0..new_len {
+            if let Ok(d) = self.try_get(i) {
+                trimmed.push(d);
+            }
+        }
+        *self = trimmed;
+    }
+
+    /// Splits the buffer into two at `at`, returning a new buffer containing `[at..len)`.
+    pub fn split_off(&mut self, at: usize) -> Result<Self, QuatError> {
+        if at > self.len {
+            return Err(QuatError::OutOfBounds {
+                index: at,
+                len: self.len,
+            });
+        }
+        let mut right = Self::with_capacity(self.len - at);
+        for i in at..self.len {
+            if let Ok(d) = self.try_get(i) {
+                right.push(d);
+            }
+        }
+        self.truncate(at);
+        Ok(right)
+    }
+
+    /// Reverses the order of all quaternary digits in-place.
+    pub fn reverse_digits(&mut self) {
+        if self.len <= 1 {
+            return;
+        }
+        let mut reversed = Self::with_capacity(self.len);
+        for i in (0..self.len).rev() {
+            if let Ok(d) = self.try_get(i) {
+                reversed.push(d);
+            }
+        }
+        *self = reversed;
+    }
+
+    /// Returns `true` if the buffer starts with the given quaternary digit slice.
+    pub fn starts_with(&self, prefix: &[QuatDigit]) -> bool {
+        if prefix.len() > self.len {
+            return false;
+        }
+        prefix
+            .iter()
+            .enumerate()
+            .all(|(i, expected)| self.get(i) == Some(*expected))
+    }
+
+    /// Returns `true` if the buffer ends with the given quaternary digit slice.
+    pub fn ends_with(&self, suffix: &[QuatDigit]) -> bool {
+        if suffix.len() > self.len {
+            return false;
+        }
+        let start = self.len - suffix.len();
+        suffix
+            .iter()
+            .enumerate()
+            .all(|(offset, expected)| self.get(start + offset) == Some(*expected))
+    }
+
+    /// Returns the starting index of the first occurrence of `needle`, or `None` if not found.
+    pub fn find_subslice(&self, needle: &[QuatDigit]) -> Option<usize> {
+        if needle.is_empty() {
+            return Some(0);
+        }
+        if needle.len() > self.len {
+            return None;
+        }
+        for start in 0..=(self.len - needle.len()) {
+            let matched = needle
+                .iter()
+                .enumerate()
+                .all(|(offset, expected)| self.get(start + offset) == Some(*expected));
+            if matched {
+                return Some(start);
+            }
+        }
+        None
+    }
+
+    /// Converts all packed quaternary digits into an unpacked `Vec<u8>` with values in `0..=3`.
+    pub fn to_unpacked_vec(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.len);
+        for d in self.iter() {
+            out.push(d.to_bits());
+        }
+        out
+    }
+
+    /// Builds a `QuatBuffer` from a slice of raw digit values (`0..=3`), returning `QuatError::InvalidBits` on invalid input.
+    pub fn from_unpacked_slice(values: &[u8]) -> Result<Self, QuatError> {
+        let mut buf = Self::with_capacity(values.len());
+        for &v in values {
+            let digit = QuatDigit::from_bits(v)?;
+            buf.push(digit);
+        }
+        Ok(buf)
+    }
+
+    /// Formats the quaternary digits as a base-4 string (`'0'`..`'3'`).
+    pub fn to_base4_string(&self) -> String {
+        self.iter().map(|d| char::from(b'0' + d.to_bits())).collect()
+    }
+
+    /// Formats the underlying packed bytes as a lowercase hexadecimal string.
+    pub fn to_hex_packed(&self) -> String {
+        let mut s = String::with_capacity(self.data.len() * 2);
+        for &b in &self.data {
+            s.push(char::from_digit((b >> 4) as u32, 16).unwrap_or('0'));
+            s.push(char::from_digit((b & 0x0F) as u32, 16).unwrap_or('0'));
+        }
+        s
+    }
+
+    /// Encodes quaternary digits using a custom 4-symbol alphabet indexed by `0b00..=0b11` (e.g. `['A', 'C', 'G', 'T']`).
+    pub fn encode_with_alphabet(&self, alphabet: [char; 4]) -> String {
+        self.iter()
+            .map(|d| alphabet[(d.to_bits() & 0b11) as usize])
+            .collect()
+    }
+
 }
 
 impl From<Vec<QuatDigit>> for QuatBuffer {
@@ -344,5 +617,25 @@ impl<'de> Deserialize<'de> for QuatBuffer {
             data: dto.data,
             len: dto.len,
         })
+    }
+}
+
+impl FromIterator<QuatDigit> for QuatBuffer {
+    fn from_iter<T: IntoIterator<Item = QuatDigit>>(iter: T) -> Self {
+        let iterator = iter.into_iter();
+        let (lower, _) = iterator.size_hint();
+        let mut buf = Self::with_capacity(lower);
+        for digit in iterator {
+            buf.push(digit);
+        }
+        buf
+    }
+}
+
+impl Extend<QuatDigit> for QuatBuffer {
+    fn extend<T: IntoIterator<Item = QuatDigit>>(&mut self, iter: T) {
+        for digit in iter {
+            self.push(digit);
+        }
     }
 }

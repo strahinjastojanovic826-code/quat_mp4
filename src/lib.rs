@@ -417,4 +417,200 @@ mod tests {
         println!("\n--- FFMPEG PROBE BENCHMARK ---");
         println!("FFmpeg probe time ({0} calls): {1:?}", ITERATIONS, duration_probe);
     }
+
+    #[test]
+    fn test_quat_logic_and_shifts_bench() {
+        let start = Instant::now();
+        const ITERATIONS: usize = 50_000;
+
+        for _ in 0..ITERATIONS {
+            let mut a = QuatBuffer::new();
+            a.push(QuatDigit::Q0); // 0b00
+            a.push(QuatDigit::Q1); // 0b01
+            a.push(QuatDigit::Q2); // 0b10
+            a.push(QuatDigit::Q3); // 0b11
+
+            let mut b = QuatBuffer::new();
+            b.push(QuatDigit::Q3); // 0b11
+            b.push(QuatDigit::Q2); // 0b10
+            b.push(QuatDigit::Q1); // 0b01
+            b.push(QuatDigit::Q0); // 0b00
+
+            let xored = a.quat_xor(&b); 
+            assert_eq!(xored.get(0), Some(QuatDigit::Q3));
+            assert_eq!(xored.get(1), Some(QuatDigit::Q3));
+            assert_eq!(xored.get(2), Some(QuatDigit::Q3));
+            assert_eq!(xored.get(3), Some(QuatDigit::Q3));
+
+            let anded = a.quat_and(&b);
+            assert_eq!(anded.get(0), Some(QuatDigit::Q0));
+            assert_eq!(anded.get(1), Some(QuatDigit::Q0));
+
+            let ored = a.quat_or(&b);
+            assert_eq!(ored.get(0), Some(QuatDigit::Q3));
+            assert_eq!(ored.get(3), Some(QuatDigit::Q3));
+
+            let mut not_buf = a.clone();
+            not_buf.quat_not();
+            assert_eq!(not_buf.get(0), Some(QuatDigit::Q3));
+            assert_eq!(not_buf.get(3), Some(QuatDigit::Q0));
+
+            let rotl = a.quat_rotl(1);
+            assert_eq!(rotl.get(0), Some(QuatDigit::Q1));
+            assert_eq!(rotl.get(3), Some(QuatDigit::Q0));
+
+            let rotr = rotl.quat_rotr(1);
+            assert_eq!(rotr.get(0), Some(QuatDigit::Q0));
+            assert_eq!(rotr.get(3), Some(QuatDigit::Q3));
+
+            let shl = a.quat_shl(2);
+            assert_eq!(shl.get(0), Some(QuatDigit::Q2));
+            assert_eq!(shl.get(2), Some(QuatDigit::Q0));
+
+            let shr = a.quat_shr(2);
+            assert_eq!(shr.get(0), Some(QuatDigit::Q0));
+            assert_eq!(shr.get(2), Some(QuatDigit::Q0));
+        }
+
+        let duration = start.elapsed();
+        println!("\n--- BENCHMARK: test_quat_logic_and_shifts ---");
+        println!("Time for {} iterations: {:?}", ITERATIONS, duration);
+    }
+
+    #[test]
+    fn test_buffer_slicing_search_and_byte_ops_bench() {
+        let start = Instant::now();
+        const ITERATIONS: usize = 50_000;
+
+        for _ in 0..ITERATIONS {
+            let mut buf = QuatBuffer::new();
+            buf.push(QuatDigit::Q1);
+            buf.push(QuatDigit::Q2);
+            buf.push(QuatDigit::Q3);
+            buf.push(QuatDigit::Q2);
+            buf.push(QuatDigit::Q3);
+
+            assert!(buf.starts_with(&[QuatDigit::Q1, QuatDigit::Q2]));
+            assert!(buf.ends_with(&[QuatDigit::Q2, QuatDigit::Q3]));
+            assert_eq!(buf.find_subslice(&[QuatDigit::Q2, QuatDigit::Q3]), Some(1));
+
+            let tail = buf.split_off(3).unwrap();
+            assert_eq!(buf.len(), 3);
+            assert_eq!(tail.len(), 2);
+
+            let mut rev = buf.clone();
+            rev.reverse_digits();
+            assert_eq!(rev.get(0), Some(QuatDigit::Q3));
+            assert_eq!(rev.get(2), Some(QuatDigit::Q1));
+
+            let mut byte_buf = QuatByteBuffer::new();
+            let _ = byte_buf.push(0);
+            let _ = byte_buf.push(1);
+            let _ = byte_buf.push(2);
+            let _ = byte_buf.push(3);
+            assert!(byte_buf.starts_with(&[0, 1]));
+            assert!(byte_buf.ends_with(&[2, 3]));
+            byte_buf.quat_not();
+            assert_eq!(byte_buf.to_base4_string(), "3210");
+        }
+
+        let duration = start.elapsed();
+        println!("\n--- BENCHMARK: test_buffer_slicing_search_and_byte_ops ---");
+        println!("Time for {} iterations: {:?}", ITERATIONS, duration);
+    }
+
+    #[test]
+    fn test_conversions_and_alphabet_encoding_bench() {
+        let start = Instant::now();
+        const ITERATIONS: usize = 50_000;
+
+        for _ in 0..ITERATIONS {
+            let raw = [0u8, 1u8, 2u8, 3u8, 1u8];
+            let buf = QuatBuffer::from_unpacked_slice(&raw).unwrap();
+            assert_eq!(buf.to_unpacked_vec(), raw);
+            assert_eq!(buf.to_base4_string(), "01231");
+            assert!(!buf.to_hex_packed().is_empty());
+
+            let dna = buf.encode_with_alphabet(['A', 'C', 'G', 'T']);
+            assert_eq!(dna, "ACGTC");
+
+            assert!(QuatBuffer::from_unpacked_slice(&[0, 4]).is_err());
+        }
+
+        let duration = start.elapsed();
+        println!("\n--- BENCHMARK: test_conversions_and_alphabet_encoding ---");
+        println!("Time for {} iterations: {:?}", ITERATIONS, duration);
+    }
+
+    #[test]
+    fn test_mp4_exact_len_and_skip_boxes_bench() {
+        let start = Instant::now();
+        const ITERATIONS: usize = 20_000;
+
+        for _ in 0..ITERATIONS {
+            let mut payload = QuatByteBuffer::new();
+            let _ = payload.push(3);
+            let _ = payload.push(1);
+            let _ = payload.push(2); // 3 digits (non-multiple of 4)
+
+            let box_item = QuatMp4Box::new(payload);
+            let mut stream = Vec::new();
+
+            // Write a dummy non-quat box ('free') before the 'quat' box
+            let dummy_payload = [0xAAu8, 0xBBu8];
+            let dummy_size: u32 = 8 + dummy_payload.len() as u32;
+            use std::io::Write;
+            stream.write_all(&dummy_size.to_be_bytes()).unwrap();
+            stream.write_all(b"free").unwrap();
+            stream.write_all(&dummy_payload).unwrap();
+
+            // Write exact 'quat' box preserving exact digit length
+            box_item.write_exact_to(&mut stream).unwrap();
+
+            let mut cursor = std::io::Cursor::new(stream);
+            let parsed = QuatMp4Box::read_next_quat_from(&mut cursor).unwrap();
+            assert_eq!(parsed.box_type, Mp4BoxType::QuaternaryData);
+            assert_eq!(parsed.payload.len(), 3);
+            assert_eq!(parsed.payload.to_base4_string(), "312");
+        }
+
+        let duration = start.elapsed();
+        println!("\n--- BENCHMARK: test_mp4_exact_len_and_skip_boxes ---");
+        println!("Time for {} iterations: {:?}", ITERATIONS, duration);
+    }
+
+    #[test]
+    fn test_serialization_diagnostics_and_ffi_helpers_bench() {
+        let start = Instant::now();
+        const ITERATIONS: usize = 50_000;
+
+        for _ in 0..ITERATIONS {
+            let mut buf = QuatBuffer::new();
+            buf.push(QuatDigit::Q0);
+            buf.push(QuatDigit::Q2);
+
+            let diag = buf.diagnostic_summary();
+            assert!(diag.contains("len: 2"));
+
+            let json = serde_json::to_string(&buf).unwrap();
+            let decoded: QuatBuffer = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, buf);
+
+            let mut packed = [0b00_01_10_11u8];
+            unsafe {
+                let res = crate::ffmpeg_bridge::quat_ffmpeg_quat_not_bytes(
+                    packed.as_mut_ptr(),
+                    packed.len(),
+                );
+                assert_eq!(res, 1);
+            }
+            assert_eq!(packed[0], 0b11_10_01_00u8);
+            assert_eq!(crate::ffmpeg_bridge::quat_ffmpeg_abi_version(), 1);
+        }
+
+        let duration = start.elapsed();
+        println!("\n--- BENCHMARK: test_serialization_diagnostics_and_ffi_helpers ---");
+        println!("Time for {} iterations: {:?}", ITERATIONS, duration);
+    }
+
 }

@@ -41,6 +41,7 @@ impl QuatDigit {
             0b00 => Ok(Self::Q0),
             0b01 => Ok(Self::Q1),
             0b10 => Ok(Self::Q2),
+            0b11 => Ok(Self::Q3),
             _ => Err(QuatError::InvalidBits(bits)),
         }
     }
@@ -51,6 +52,55 @@ impl QuatDigit {
     pub const fn to_bits(self) -> u8 {
         self as u8
     }
+
+    /// Returns the quaternary bitwise complement (`digit ^ 0b11`, i.e., `3 - digit`).
+    #[inline]
+    #[must_use]
+    pub const fn quat_not(self) -> Self {
+        match self.to_bits() ^ 0b11 {
+            0b00 => Self::Q0,
+            0b01 => Self::Q1,
+            0b10 => Self::Q2,
+            _ => Self::Q3,
+        }
+    }
+
+    /// Returns quaternary bitwise AND (`self & other` on 2-bit digits).
+    #[inline]
+    #[must_use]
+    pub const fn quat_and(self, other: Self) -> Self {
+        match self.to_bits() & other.to_bits() {
+            0b00 => Self::Q0,
+            0b01 => Self::Q1,
+            0b10 => Self::Q2,
+            _ => Self::Q3,
+        }
+    }
+
+    /// Returns quaternary bitwise OR (`self | other` on 2-bit digits).
+    #[inline]
+    #[must_use]
+    pub const fn quat_or(self, other: Self) -> Self {
+        match self.to_bits() | other.to_bits() {
+            0b00 => Self::Q0,
+            0b01 => Self::Q1,
+            0b10 => Self::Q2,
+            _ => Self::Q3,
+        }
+    }
+
+    /// Returns quaternary bitwise XOR (`self ^ other` on 2-bit digits).
+    #[inline]
+    #[must_use]
+    pub const fn quat_xor(self, other: Self) -> Self {
+        match self.to_bits() ^ other.to_bits() {
+            0b00 => Self::Q0,
+            0b01 => Self::Q1,
+            0b10 => Self::Q2,
+            _ => Self::Q3,
+        }
+    }
+    
 }
 
 impl TryFrom<u8> for QuatDigit {
